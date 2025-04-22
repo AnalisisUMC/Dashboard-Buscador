@@ -1,0 +1,155 @@
+---
+title: "Repositorio de investigaciones UMC"
+author: ""
+date: ""
+output: 
+  flexdashboard::flex_dashboard:
+    orientation: rows
+    vertical_layout: fill
+    logo: "02 Logos/umc2.jpg"
+    theme: bootstrap
+runtime: shiny
+---
+
+```{r, message=FALSE, warning=FALSE}
+
+library(foreign)
+library(haven)
+library(openxlsx)
+library(readxl)
+library(tidyverse)
+library(ggplot2)
+library(fst)
+library(ggpubr)
+library(flexdashboard)
+library(shiny)
+library(DT)
+library(shinydashboard)
+library(stringr)
+
+```
+
+```{r Bases de datos}
+
+tabla_1 <- read.xlsx("01 Bases/Matriz campos de publicaciones UMC_V4.xlsx")
+
+```
+
+```{r Criterios de búsqueda}
+
+a1 <- tabla_1 %>% 
+  select(Marcador = `Palabras.clave`) %>% 
+  mutate(Marcador = str_replace_all(Marcador,"\n"," "))
+
+marcas <- list()
+
+
+# Iterar sobre las primeras 44 filas
+
+# i = 2 
+
+for (i in 1:44) {
+  
+  marcas[[i]] <- a1[i, 1]
+}
+
+marcas_tot <- paste(unlist(marcas), collapse = ";")
+
+marcas_vector <- as.data.frame(str_split(marcas_tot, ";") %>%  unlist()) %>% 
+  ungroup() %>% 
+  pull()
+
+
+
+```
+
+```{r Tabla de resultados}
+
+tab2 <- tabla_1 %>% 
+  select(Marcador = `Palabras.clave`,
+         Año,
+         Título = `Título`,
+         Link = `Link.de.descarga`,
+         Responsables_Rep,
+         Resumen) %>% 
+  mutate_at(vars(Marcador),
+            ~str_replace_all(.,";\n","; ")) %>% 
+  mutate_at(vars(Marcador),
+            ~str_replace_all(.,"\n",", ")) %>% 
+  mutate(Año = as.character(Año))
+
+
+
+```
+
+```{r}
+
+
+fluidPage(
+  
+  tabsetPanel(id = "mainPanel",
+              
+              tabPanel("Criterios de búsqueda", 
+                       # Agregar estilo CSS para aumentar el tamaño de letra
+                       tags$style(HTML("
+           #var1-label, #buscar { 
+             font-size: 25px; /* Tamaño para las etiquetas y botón */
+           }
+           #mainPanel .dataTables_wrapper {
+             font-size: 25px; /* Tamaño de letra para la tabla */
+           }
+         ")),
+         # Contenido del tab1
+         selectInput("var1", 
+                     "Selecciona un marcador:", 
+                     choices = unique(marcas_vector)),
+         # choices = unique(str_split(tab2$Marcador,"; ") %>%  unlist())),
+         actionButton("buscar", 
+                      "Buscar"),
+         dataTableOutput("text")
+              ),
+         
+         tabPanel("Resultados", 
+                  # Contenido del tab2
+                  renderDT({
+                    
+                    tab2 %>%
+                      filter(str_detect(Marcador, input$var1)) %>%
+                      select(Título,
+                             Año,
+                             Responsables,
+                             Resumen,
+                             Link) %>%  
+                      mutate(Link = paste0('<a href="', Link, '" target="_blank">', Link, '</a>')) %>%
+                      datatable(filter = "top",
+                                escape = FALSE,  # Evita que el HTML sea escapado y permite que se interprete
+                                options = list(
+                                  dom = 'Brtip',
+                                  paging = TRUE,
+                                  pageLength = 20, # Número de filas a mostrar por página
+                                  scrollY = "660px", # Altura de desplazamiento vertical
+                                  fixedColumns = TRUE,
+                                  fixedHeader = TRUE,
+                                  columnDefs = list(
+                                    list(targets = 1, width = '100px'),   # Ancho de la segunda columna (Título)
+                                    list(targets = 2, width = '60px'),  # Ancho de la tercera columna (Año)
+                                    list(targets = 3, width = '150px'),  # Ancho de la cuarta columna (Responsables)
+                                    list(targets = 4, width = '550px'),  # Ancho de la quinta columna (Resumen)
+                                    list(targets = 5, width = '5px'),    # Ancho de la sexta columna (Link)
+                                    list(targets = 0, visible = FALSE)   # Ocultar la primera columna (índice)
+                                  )
+                                )
+                      )
+                  })
+         )
+  )
+)
+
+# Observador del botón
+observeEvent(input$buscar, {
+  updateTabsetPanel(session, "mainPanel", selected = "Resultados")
+})
+
+
+```
+
